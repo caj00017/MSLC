@@ -1,5 +1,7 @@
 # Mars Surface Logistics Calculator
 
+> **AI Disclosure** — This project exists to evaluate the capability of Claude Opus 4.8 on a complex, multi-domain engineering task. The architecture, calculation engine, UI, test suite, and all documentation were generated entirely by Claude Opus 4.8 in response to the prompt in `prompt.txt`. The repository owner makes no claim of authorship over the implementation — it is presented as a benchmark artifact, not original work.
+
 Estimates the **landed mass, cargo-mission count, setup sequence, power balance,
 consumables, ISRU production, and resupply cadence** required to sustain a
 configurable number of humans on the Martian surface using Starship-sized cargo
