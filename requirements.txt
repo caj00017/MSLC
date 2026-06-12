@@ -1,0 +1,13 @@
+# Mars Surface Logistics Calculator
+#
+# The calculation engine (mars_logistics/, tests/) is PURE PYTHON STANDARD
+# LIBRARY and needs none of the packages below. You can run the model and the
+# full test suite with a bare Python 3.11+ interpreter.
+#
+# The packages below are only required to run the Streamlit UI (app.py) and the
+# one-click Excel workbook export. CSV/JSON import/export work without them.
+
+streamlit>=1.30
+pandas>=2.0
+altair>=5.0
+openpyxl>=3.1

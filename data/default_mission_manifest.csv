@@ -1,0 +1,11 @@
+mission,year,lander,mode,launch_mass_limit_kg,allocated_mass_kg,available_power_kw,power_needed_kw,available_energy_kwh,energy_needed_kwh,key_assets,source_class
+LInc-1,2030,MK1,Survive,3000,2992.6,60,20,72,0,"1 VSAT, 8 batteries, 1 power cable, 1 heavy cargo handling rover",legacy_lunar_analog_placeholder
+LInc-2,2031,MK1,Survive,3000,2998.6,110,30,432,0,"1 VSAT, 40 batteries, 1 power cable, 1 regolith excavator rover",legacy_lunar_analog_placeholder
+LInc-3,2032,MK1,Survive,3000,2977.6,160,30,801,0,"1 VSAT, 41 batteries, 1 power cable",legacy_lunar_analog_placeholder
+LInc-4,2033,MK1,Thrive,3000,2976,160,40.15,1323,890.4,"58 batteries, 1 comms system, 1 regolith excavator rover",legacy_lunar_analog_placeholder
+LInc-5,2034,MK1,Thrive,3000,2979.6,160,41.15,1683,890.4,"40 batteries, 1 power cable, 1 shelter assembly system",legacy_lunar_analog_placeholder
+LInc-6,2035,MK2,Thrive,30000,29970,160,64.15,7227,2738.4,"616 batteries, 1 shelter, 1 light cargo handling rover, 1 dexterous rover",legacy_lunar_analog_placeholder
+LInc-7,2036,MK2,Thrive,30000,29970,160,68.15,12861,4082.4,"626 batteries, 1 science mission, 1 shelter",legacy_lunar_analog_placeholder
+LInc-8,2037,MK2,Thrive,30000,24310,160,108.15,17523,17522.4,"518 batteries, 1 O2fR pilot plant",legacy_lunar_analog_placeholder
+LInc-9,2038,MK2,Thrive,30000,0,160,0,0,0,no additional assets,legacy_lunar_analog_placeholder
+LInc-10,2039,MK2,Thrive,30000,0,160,0,0,0,no additional assets,legacy_lunar_analog_placeholder

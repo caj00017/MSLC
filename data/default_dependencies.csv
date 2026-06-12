@@ -1,0 +1,18 @@
+asset_id,depends_on_asset_id,rule,note
+o2fr_pilot_plant,shelter,-1,ISRU plant needs shelter established first.
+o2fr_pilot_plant,comms_system,-1,ISRU plant needs comms first.
+o2fr_pilot_plant,regolith_excavator_rover,0,ISRU needs feedstock excavation.
+o2fr_pilot_plant,cargo_handling_rover_light,0,Unloading/placement.
+o2fr_pilot_plant,cargo_handling_rover_heavy,0,Unloading/placement.
+o2fr_pilot_plant,power_cable,0,ISRU needs power distribution.
+science_payload,shelter,-1,Science needs shelter first.
+science_payload,comms_system,-1,Science needs comms first.
+science_payload,cargo_handling_rover_heavy,0,Unloading.
+science_payload,power_cable,0,Power distribution.
+shelter,shelter_assembly_system,0,Shelter needs assembly system.
+shelter,regolith_excavator_rover,0,Shelter needs excavation (shielding/foundation).
+shelter,cargo_handling_rover_light,0,Unloading.
+shelter,cargo_handling_rover_heavy,0,Unloading.
+vsat_power_unit,power_cable,0,Generator needs distribution.
+battery_module,vsat_power_unit,0,Storage needs generation to charge (Mars addition).
+comms_system,vsat_power_unit,0,Comms needs power (Mars addition).

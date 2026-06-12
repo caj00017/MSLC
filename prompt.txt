@@ -1,0 +1,2105 @@
+You are an aerospace systems engineer, Mars surface-systems analyst, mission logistics modeler, and senior software developer. Build a Mars Surface Logistics Calculator that estimates the landed mass, cargo mission count, setup sequence, power balance, consumables, ISRU production, and resupply cadence required to sustain a configurable number of humans on the Martian surface using Starship-sized cargo missions.
+
+The developer does NOT have access to the original lunar reference spreadsheets. All spreadsheet-derived information needed to recreate the modeling approach is embedded below. Do not ask for the spreadsheets. Use the embedded values as legacy lunar-analog starter assumptions only. Build the Mars calculator so every number can be edited, imported, exported, and replaced by better engineering data later.
+
+The calculator must be auditable, unit-consistent, scenario-driven, and easy for non-programmers to use.
+
+Primary objective:
+
+Create a calculator that answers:
+
+1. How much landed mass is required to establish minimal survival capability for N humans on Mars?
+
+2. How much additional landed mass is required for exploration and science capability?
+
+3. How many Starship-sized cargo missions are required before crew arrival?
+
+4. How many missions are required for each operating mode:
+
+   - Survival
+
+   - Survival + exploration
+
+   - Survival + exploration + science
+
+   - Growth/thrive mode with greenhouse, construction, expanded ISRU, and optional propellant production
+
+5. What mass and cadence are required for resupply?
+
+6. What consumables, spares, and replacement hardware dominate sustainment mass?
+
+7. What is the limiting resource: mass, power, energy storage, water, oxygen, food, ISRU throughput, excavation throughput, crew capacity, or dependency sequencing?
+
+Preferred implementation:
+
+- Python 3.11 + Streamlit for the first internal tool.
+
+- Keep calculation engine separate from UI.
+
+- Suggested structure:
+
+  - app.py
+
+  - mars_logistics/model.py
+
+  - mars_logistics/defaults.py
+
+  - mars_logistics/packing.py
+
+  - mars_logistics/validation.py
+
+  - data/default_assumptions.json
+
+  - data/default_assets.csv
+
+  - data/default_dependencies.csv
+
+  - data/default_mission_manifest.csv
+
+  - tests/test_model.py
+
+  - README.md
+
+- Include CSV/JSON import/export for assumptions, scenarios, asset catalogs, mission manifests, and outputs.
+
+- Include one-click export to CSV and Excel workbook.
+
+- Use explicit named variables only. No hidden constants.
+
+Important modeling caution:
+
+The embedded spreadsheet values are lunar-derived placeholders. They are useful for model architecture, test cases, and a first-pass Mars calculator, but they are not validated Mars design values. The UI must label them as "legacy lunar-derived placeholder values."
+
+Current external reference assumptions:
+
+- Mars transfer/resupply opportunity default: 26 Earth months.
+
+- Mars sol default: 24.65979 hours.
+
+- Earth_days_per_sol = 24.65979 / 24.
+
+- SpaceX Starship landed Mars cargo payload is not a fixed known value in this calculator. Make it user-configurable.
+
+- Default Starship-sized landed payload placeholder: 100,000 kg.
+
+- Sensitivity payload cases: 50,000 kg, 75,000 kg, 100,000 kg, 125,000 kg, 150,000 kg.
+
+- Default packing efficiency: 0.90.
+
+- Default unallocated margin: 0.20.
+
+- Usable payload formula:
+
+  usable_payload_kg = landed_payload_kg_per_starship * packing_efficiency * (1 - unallocated_margin)
+
+- With 100,000 kg landed payload, 0.90 packing efficiency, and 0.20 unallocated margin, default usable payload = 72,000 kg.
+
+Core modeling principles:
+
+- Never mix kW and kWh.
+
+- kW = instantaneous power.
+
+- kWh = energy over time.
+
+- Use sols for Mars surface operations but also display Earth days.
+
+- Keep crew-life-support oxygen separate from propellant oxygen.
+
+- Keep return propellant production optional.
+
+- Do not allow crew arrival until readiness checks pass.
+
+- Do not hard-code lunar values as Mars facts.
+
+- Every assumption must be editable in the UI and stored in a scenario file.
+
+============================================================
+
+EMBEDDED LEGACY LUNAR-ANALOG REFERENCE MODEL
+
+============================================================
+
+The original lunar reference material had two model types:
+
+1. Node-based life-support/ISRU/power model
+
+   It used these nodes:
+
+   - Habitat node: consumes water, oxygen, and power; outputs waste.
+
+   - ISRU node: consumes power and regolith; produces oxygen.
+
+   - Excavation node: consumes power; produces regolith/feedstock.
+
+   - Power generation node: sums habitat, ISRU, excavation, greenhouse, science, and spaceport energy.
+
+   - Greenhouse node: consumes water and power; placeholder for food production.
+
+   - Science node: consumes power.
+
+   - Spaceport node: consumes power and oxygen; placeholder for water production and propellant support.
+
+2. Asset catalog and mission-packing model
+
+   It used:
+
+   - Asset rows with mass, power, duty cycle, quantity, source, and notes.
+
+   - Day power calculation.
+
+   - Night energy calculation.
+
+   - Battery sizing using specific energy.
+
+   - Cable and rover sizing.
+
+   - Total mass rollup.
+
+   - Mission-set packing with mass, power, energy, and dependency checks.
+
+Known issues in the legacy spreadsheets:
+
+- Some values were explicitly marked "PLACE HOLDER VALUES."
+
+- Some cells included notes such as "check," "Ask Jibu about these," and "circular reference here."
+
+- Some power-generation cells produced `#DIV/0!`.
+
+- The calculator must rebuild the logic cleanly and not reproduce spreadsheet errors.
+
+============================================================
+
+LEGACY NODE MODEL DEFAULTS
+
+============================================================
+
+Use these as default values in a scenario called:
+
+"Legacy lunar-derived Mars placeholder."
+
+Base inputs:
+
+- crew_count = 50
+
+- planning_period_days = 30
+
+- mission_length_days = 30
+
+Habitat / crew consumables:
+
+- water_kg_per_person_day = 8
+
+- water_recovery_rate = 0.98
+
+- oxygen_kg_per_person_day = 1.1
+
+- oxygen_recovery_rate = 0.45
+
+- habitat_power_kw_per_person = 7.5
+
+Derived reference values for 50 people and 30 days:
+
+- gross_water_full_crew_per_day = 400 kg/day
+
+- gross_water_full_crew_per_30_days = 12,000 kg
+
+- recovery_adjusted_water_per_30_days = 240 kg
+
+- gross_oxygen_full_crew_per_day = 55 kg/day
+
+- gross_oxygen_full_crew_per_30_days = 1,650 kg
+
+- recovery_adjusted_oxygen_per_30_days = 907.5 kg
+
+- habitat_instantaneous_power = 375 kW
+
+- habitat_energy_per_day = 9,000 kWh/day
+
+- habitat_energy_per_30_days = 270,000 kWh
+
+ISRU - carbothermal oxygen production, crew life-support case:
+
+- ISRU_baseline_power_kw = 15
+
+- ISRU_baseline_oxygen_output_kg_per_day = 15.6
+
+- ISRU_baseline_oxygen_output_kg_per_30_days = 468
+
+- For 50 people at 1.1 kg O2/person/day and 45% oxygen recovery:
+
+  - crew_O2_monthly_need = 907.5 kg
+
+  - number_of_baseline_systems_needed = 1.9391
+
+  - scaled_ISRU_power_kw = 29.0865
+
+  - scaled_ISRU_energy_per_30_days = 20,942.31 kWh
+
+ISRU - Starship/spaceport oxygen placeholder:
+
+- starship_O2_need_earth_metric_tons = 1,200
+
+- legacy_lunar_scaled_O2_need_metric_tons = 200
+
+- legacy_lunar_scaled_O2_need_with_safety_factor_kg_per_30_days = 200,000
+
+- baseline_ISRU_output_kg_per_30_days = 468
+
+- implied_number_of_baseline_systems_needed = 427.35
+
+- implied_ISRU_power_kw = 6,410.26
+
+- implied_ISRU_energy_per_30_days = 4,615,384.62 kWh
+
+- This is a placeholder only. In the Mars calculator, keep propellant ISRU separate from crew-survival ISRU.
+
+Regolith / excavation:
+
+- regolith_baseline_needed_kg_per_day = 140
+
+- regolith_baseline_needed_kg_per_30_days = 4,200
+
+- excavator_recharging_power_kw = 0.2
+
+- excavator_recharge_duration_hours = 10
+
+- mean_time_to_recharge_days = 4.5
+
+- legacy_excavator_average_power_kw = 0.4444
+
+- crew + spaceport combined legacy regolith need = 1,803,016 kg/month
+
+- implied_number_of_excavation_systems_needed = 429.29
+
+- implied_excavation_energy_per_30_days = 5,723.86 kWh
+
+- Treat these as placeholders and rebuild Mars-specific regolith/water/oxygen feedstock logic.
+
+Power generation reference rollup:
+
+For the 50-person, 30-day placeholder case:
+
+- excavation_energy_per_30_days = 5,723.86 kWh
+
+- ISRU_energy_per_30_days including crew and Starship/spaceport placeholder = 4,636,326.92 kWh
+
+- habitat_energy_per_30_days = 270,000 kWh
+
+- greenhouse_energy_per_30_days = 30,000 kWh
+
+- science_energy_per_30_days = 30,000 kWh
+
+- spaceport_energy_per_30_days = 30,000 kWh
+
+- total_system_energy_per_30_days = 5,002,050.78 kWh
+
+- Some legacy cells after this produced divide-by-zero errors. Rebuild from first principles.
+
+Greenhouse placeholder:
+
+- greenhouse_water_kg_per_person_day = 5
+
+- greenhouse_water_full_crew_per_day = 250 kg/day
+
+- greenhouse_water_full_crew_per_30_days = 7,500 kg
+
+- greenhouse_energy_kWh_per_person_day = 20
+
+- greenhouse_energy_full_crew_per_day = 1,000 kWh/day
+
+- greenhouse_energy_full_crew_per_30_days = 30,000 kWh
+
+- Food production was not actually modeled. The Mars calculator must include food closure fraction as an editable input.
+
+Science node placeholder:
+
+- science_energy_kWh_per_day = 1,000
+
+- science_energy_kWh_per_30_days = 30,000
+
+Spaceport node placeholder:
+
+- spaceport_energy_kWh_per_day = 1,000
+
+- spaceport_energy_kWh_per_30_days = 30,000
+
+- water_output_placeholder_kg_per_day = 500
+
+- water_output_placeholder_kg_per_30_days = 15,000
+
+- water_needed_by_other_systems_per_30_days = 7,740 kg
+
+- water_production_factor = 1.938
+
+- Treat spaceport as optional and separate from survival.
+
+============================================================
+
+LEGACY ASSET CATALOG DEFAULTS
+
+============================================================
+
+Create a default asset CSV with at least these rows. Label source_class = "legacy_lunar_analog_placeholder".
+
+Columns:
+
+asset_id,
+
+asset_name,
+
+category,
+
+scenario_group,
+
+unit_mass_kg,
+
+unit_volume_m3,
+
+quantity_fixed,
+
+quantity_per_crew,
+
+quantity_per_habitat,
+
+quantity_per_power_unit,
+
+quantity_per_ISRU_unit,
+
+power_peak_kw,
+
+power_continuous_kw,
+
+duty_cycle,
+
+energy_kWh_per_sol,
+
+storage_capacity_kg,
+
+production_resource_type,
+
+production_kg_per_sol,
+
+lifetime_sols,
+
+spares_percent_per_year,
+
+redundancy_minimum,
+
+minimum_quantity_before_crew,
+
+can_arrive_after_crew,
+
+prerequisite_asset_ids,
+
+dependency_type,
+
+source_class,
+
+source_note,
+
+confidence,
+
+notes
+
+Seed assets:
+
+1. O2fR pilot plant
+
+- category = ISRU
+
+- scenario_group = thrive
+
+- unit_mass_kg = 1000
+
+- power_peak_kw = 40
+
+- duty_cycle = 1
+
+- power_continuous_kw = 40
+
+- source_note = "Power slide 12 in legacy quick-look study"
+
+- notes = "Oxygen-from-regolith pilot plant; lunar analog placeholder."
+
+2. Science mission payload
+
+- category = science
+
+- scenario_group = science
+
+- unit_mass_kg = 100
+
+- power_peak_kw = 1
+
+- duty_cycle = 1
+
+- power_continuous_kw = 1
+
+3. VSAT / power unit analog
+
+- category = power
+
+- scenario_group = survival
+
+- unit_mass_kg = 700
+
+- power_output_kw = 50
+
+- power_peak_kw = 0
+
+- duty_cycle = 0
+
+- source_note = "Legacy sheet treated VSAT as producing 50 kW"
+
+- notes = "This is a power-system analog, not necessarily a Mars power architecture."
+
+4. Battery module
+
+- category = energy_storage
+
+- scenario_group = survival
+
+- unit_mass_kg = 45
+
+- battery_specific_energy_kWh_per_kg = 0.2
+
+- energy_capacity_kWh = 9
+
+- source_note = "200 Wh/kg; legacy note said Fuel Cell"
+
+- notes = "Treat as battery/storage module placeholder."
+
+5. Power cable
+
+- category = power_distribution
+
+- scenario_group = survival
+
+- unit_mass_kg = 432.6
+
+- cable_specific_mass_kg_per_km_per_kw = 8
+
+- source_note = "Mission-set sheet used 1,730.4 kg total for 4 cables, or 432.6 kg each. Another quick-look row listed 40 kg for 0.5 km at 10 kW. Preserve both notes and make cable sizing formula-driven."
+
+- notes = "Use formula mass = kg_per_km_per_kw * length_km * transmitted_kw, not a hard-coded cable mass."
+
+6. Shelter / habitat analog
+
+- category = habitat
+
+- scenario_group = survival
+
+- unit_mass_kg = 1700
+
+- power_peak_kw = 3
+
+- duty_cycle = 1
+
+- power_continuous_kw = 3
+
+- source_note = "Legacy shelter line item"
+
+- notes = "Lunar shelter analog; not a Mars habitat mass estimate."
+
+7. Shelter assembly system
+
+- category = construction
+
+- scenario_group = exploration
+
+- unit_mass_kg = 747
+
+- power_peak_kw = 1
+
+- duty_cycle = 0.25
+
+- power_continuous_kw = 0.25
+
+- notes = "Legacy bundle included LSMS, survey rover, command/monitoring suite, LDRS truss, truss assembly robot."
+
+8. Comms system
+
+- category = communications
+
+- scenario_group = survival
+
+- unit_mass_kg = 300
+
+- power_peak_kw = 0.15
+
+- duty_cycle = 1
+
+- power_continuous_kw = 0.15
+
+- notes = "Legacy note said mass and power need refinement."
+
+9. Regolith Excavator Rover
+
+- category = mobility_excavation
+
+- scenario_group = thrive
+
+- unit_mass_kg = 66
+
+- power_peak_kw = 10
+
+- duty_cycle = 0.25
+
+- power_continuous_kw = 2.5
+
+- notes = "Legacy RASSOR 2.0 analog."
+
+10. Cargo Handling Rover - Light
+
+- category = mobility_logistics
+
+- scenario_group = exploration
+
+- unit_mass_kg = 250
+
+- power_peak_kw = 10
+
+- duty_cycle = 0.25
+
+- power_continuous_kw = 2.5
+
+- notes = "Legacy HL-MAPP analog."
+
+11. Cargo Handling Rover - Heavy
+
+- category = mobility_logistics
+
+- scenario_group = survival
+
+- unit_mass_kg = 1500
+
+- power_peak_kw = 20
+
+- duty_cycle = 0.25
+
+- power_continuous_kw = 5
+
+- notes = "Legacy sheet said mass is a guess; intended for payloads greater than 200 kg."
+
+12. Highly Dexterous Rover
+
+- category = mobility_robotics
+
+- scenario_group = exploration
+
+- unit_mass_kg = 300
+
+- power_peak_kw = 10
+
+- duty_cycle = 0.25
+
+- power_continuous_kw = 2.5
+
+Additional asset from day-power sheet:
+
+13. Regolith Construction Rover
+
+- category = construction
+
+- scenario_group = thrive
+
+- unit_mass_kg = user_editable_default_66_or_300
+
+- power_peak_kw = 10
+
+- duty_cycle = 0.25
+
+- power_continuous_kw = 2.5
+
+- notes = "Appeared in power-day calculation but not consistently in total mass. Include as editable placeholder."
+
+============================================================
+
+LEGACY POWER-DAY CASE
+
+============================================================
+
+Use this as a validation scenario, not as final Mars design truth.
+
+Day operation quantities:
+
+- O2fR pilot plant: quantity 1, peak 40 kW, continuous 40 kW
+
+- Science mission: quantity 1, peak 1 kW, continuous 1 kW
+
+- Shelter: quantity 2, peak 6 kW total, continuous 6 kW total
+
+- Shelter assembly system: quantity 1, peak 1 kW, continuous 0.25 kW
+
+- Comms system: quantity 1, peak 0.15 kW, continuous 0.15 kW
+
+- Regolith Construction Rover: quantity 1, peak 10 kW, continuous 2.5 kW
+
+- Regolith Excavator Rover: quantity 1, peak 10 kW, continuous 2.5 kW
+
+- Cargo Handling Rover - Light: quantity 1, peak 10 kW, continuous 2.5 kW
+
+- Cargo Handling Rover - Heavy: quantity 1, peak 20 kW, continuous 5 kW
+
+- Highly Dexterous Rover: quantity 1, peak 10 kW, continuous 2.5 kW
+
+Legacy day-power totals:
+
+- total_peak_power_kw = 108.15
+
+- total_continuous_power_kw = 62.4
+
+- VSAT/power units needed for peak at 50 kW each = 3
+
+- VSAT/power units needed for continuous at 50 kW each = 2
+
+- total VSAT mass at 3 units = 2,100 kg
+
+- total VSAT mass at 2 units = 1,400 kg
+
+Legacy optional FSP/nuclear comparison:
+
+- If a 100 kW fission surface power unit is assumed:
+
+  - peak residual = 8.15 kW
+
+  - continuous residual = -37.6 kW
+
+  - additional VSATs needed for peak residual = 1
+
+  - additional VSATs needed for continuous residual = 0
+
+- In the Mars calculator, implement this generically as power_architecture = solar, nuclear, hybrid.
+
+============================================================
+
+LEGACY NIGHT ENERGY CASE
+
+============================================================
+
+Legacy night duration:
+
+- night_hours = 336
+
+Thrive-mode night operation:
+
+- O2fR pilot plant: 40 kW, energy 13,440 kWh
+
+- Science mission: 1 kW, energy 336 kWh
+
+- Shelter: 2 units, 6 kW total, energy 2,016 kWh
+
+- Shelter assembly system: 0 operating
+
+- Comms system: 0.15 kW, energy 50.4 kWh
+
+- Regolith Construction Rover: 0 operating
+
+- Regolith Excavator Rover: 2.5 kW, energy 840 kWh
+
+- Cargo Handling Rover - Light: 0 operating
+
+- Cargo Handling Rover - Heavy: 0 operating
+
+- Highly Dexterous Rover: 2.5 kW, energy 840 kWh
+
+- total_thrive_night_power_kw = 52.15
+
+- total_thrive_night_energy_kWh = 17,522.4
+
+- battery_specific_energy_kWh_per_kg = 0.2
+
+- battery_mass_thrive_kg = 87,612
+
+- number_of_45kg_batteries_thrive = 1,947
+
+Survive-mode night operation:
+
+- O2fR pilot plant: 0
+
+- Science mission: 0
+
+- Shelter: 2 units, 6 kW total, energy 2,016 kWh
+
+- Comms system: 0.15 kW, energy 50.4 kWh
+
+- Rovers and construction assets: 0
+
+- total_survive_night_power_kw = 6.15
+
+- total_survive_night_energy_kWh = 2,066.4
+
+- battery_mass_survive_kg = 10,332
+
+- number_of_45kg_batteries_survive = 230
+
+In the Mars calculator:
+
+- Replace "night" with configurable autonomy periods:
+
+  - critical_load_autonomy_sols
+
+  - dust_storm_autonomy_sols
+
+  - power_outage_autonomy_sols
+
+- Battery sizing formula:
+
+  storage_kWh_required =
+
+    critical_load_kw
+
+    * autonomy_hours
+
+    / battery_roundtrip_efficiency
+
+    / battery_depth_of_discharge
+
+- battery_mass_kg = storage_kWh_required / battery_specific_energy_kWh_per_kg
+
+- battery_units_required = ceil(battery_mass_kg / battery_unit_mass_kg)
+
+============================================================
+
+LEGACY CABLES AND EXCAVATION-ROVER CASE
+
+============================================================
+
+Cable reference:
+
+- cable_specific_mass_kg_per_km_per_kw = 8
+
+- number_of_cables = 4
+
+- cable_length_each_km = 0.5
+
+- legacy_total_cable_mass_kg = 1,730.4
+
+- mission-set cable mass per cable = 432.6 kg
+
+- quick-look note also said 40 kg = 0.5 km at 10 kW
+
+- The calculator must use formula-driven cable mass and show any discrepancy as notes.
+
+RASSOR / regolith excavation reference:
+
+- regolith_mass_needed_metric_tons_per_year = 100
+
+- RASSOR_capacity_metric_tons_per_day = 2.7
+
+- RASSOR_capacity_metric_tons_per_year = 985.5
+
+- RASSOR_units_needed = 1
+
+- For Mars, replace this with configurable excavation throughput:
+
+  regolith_processed_kg_per_sol_per_unit
+
+  regolith_water_mass_fraction
+
+  oxygen_feedstock_mass_fraction
+
+  excavator_availability
+
+  excavation_efficiency
+
+============================================================
+
+LEGACY TOTAL MASS CASE
+
+============================================================
+
+Legacy total mass rollup:
+
+Item, Quantity, Total Mass Thrive, Total Mass Survive, Total Mass with FSP
+
+- O2fR pilot plant, 1, 1,000 kg, 1,000 kg, 1,000 kg
+
+- Science mission, 1, 100 kg, 100 kg, 100 kg
+
+- VSAT/power unit, 3, 2,100 kg, 2,100 kg, 700 kg
+
+- Battery, 1,947 thrive / 230 survive, 87,615 kg, 10,332 kg, 0 kg
+
+- FSP from LIT, 1, 0 kg, 0 kg, 0 kg
+
+- Power cable, 4, 1,730.4 kg, 1,730.4 kg, 865.2 kg
+
+- Shelter, 2, 3,400 kg, 3,400 kg, 3,400 kg
+
+- Shelter assembly system, 1, 747 kg, 747 kg, 747 kg
+
+- Comms system, 1, 300 kg, 300 kg, 300 kg
+
+- Regolith Excavator Rover, 2, 132 kg, 132 kg, 132 kg
+
+- Cargo Handling Rover - Light, 1, 250 kg, 250 kg, 250 kg
+
+- Cargo Handling Rover - Heavy, 1, 1,500 kg, 1,500 kg, 1,500 kg
+
+- Highly Dexterous Rover, 1, 300 kg, 300 kg, 300 kg
+
+- Total thrive mass = 99,174.4 kg
+
+- Total survive mass = 21,891.4 kg
+
+- Total with FSP = 9,294.2 kg
+
+Use these as test cases:
+
+- The model should reproduce these totals when using the legacy mode and legacy assumptions.
+
+- The default Mars mode should not be forced to match these totals unless the same assumptions are selected.
+
+============================================================
+
+LEGACY MISSION-PACKING CASE
+
+============================================================
+
+The original mission-packing sheet used small lunar landers, not Starship. Reuse the logic, not the lander sizes.
+
+Legacy lander types:
+
+- MK1 lander mass limit = 3,000 kg
+
+- MK2 lander mass limit = 30,000 kg
+
+Legacy mission manifest:
+
+Mission, Year, Lander, Mode, Launch Mass Limit, Allocated Mass, Available Power, Power Needed, Available Energy, Energy Needed, Key Assets
+
+- LInc-1, 2030, MK1, Survive, 3,000 kg, 2,992.6 kg, 60 kW available, 20 kW needed, 72 kWh available, 0 kWh needed, assets: 1 VSAT, 8 batteries, 1 power cable, 1 heavy cargo handling rover
+
+- LInc-2, 2031, MK1, Survive, 3,000 kg, 2,998.6 kg, 110 kW available, 30 kW needed, 432 kWh available, 0 kWh needed, assets: 1 VSAT, 40 batteries, 1 power cable, 1 regolith excavator rover
+
+- LInc-3, 2032, MK1, Survive, 3,000 kg, 2,977.6 kg, 160 kW available, 30 kW needed, 801 kWh available, 0 kWh needed, assets: 1 VSAT, 41 batteries, 1 power cable
+
+- LInc-4, 2033, MK1, Thrive, 3,000 kg, 2,976 kg, 160 kW available, 40.15 kW needed, 1,323 kWh available, 890.4 kWh needed, assets: 58 batteries, 1 comms system, 1 regolith excavator rover
+
+- LInc-5, 2034, MK1, Thrive, 3,000 kg, 2,979.6 kg, 160 kW available, 41.15 kW needed, 1,683 kWh available, 890.4 kWh needed, assets: 40 batteries, 1 power cable, 1 shelter assembly system
+
+- LInc-6, 2035, MK2, Thrive, 30,000 kg, 29,970 kg, 160 kW available, 64.15 kW needed, 7,227 kWh available, 2,738.4 kWh needed, assets: 616 batteries, 1 shelter, 1 light cargo handling rover, 1 highly dexterous rover
+
+- LInc-7, 2036, MK2, Thrive, 30,000 kg, 29,970 kg, 160 kW available, 68.15 kW needed, 12,861 kWh available, 4,082.4 kWh needed, assets: 626 batteries, 1 science mission, 1 shelter
+
+- LInc-8, 2037, MK2, Thrive, 30,000 kg, 24,310 kg, 160 kW available, 108.15 kW needed, 17,523 kWh available, 17,522.4 kWh needed, assets: 518 batteries, 1 O2fR pilot plant
+
+- LInc-9, 2038, MK2, Thrive, 30,000 kg, 0 kg, no additional assets
+
+- LInc-10, 2039, MK2, Thrive, 30,000 kg, 0 kg, no additional assets
+
+For the Mars calculator:
+
+- Replace MK1/MK2 landers with Starship-sized cargo missions.
+
+- Use dependency-aware bin packing.
+
+- Use both mass and volume constraints where volume is available.
+
+- Include mission-level cumulative power, energy storage, habitat capacity, crew capacity, consumable endurance, ISRU capacity, and readiness status.
+
+============================================================
+
+LEGACY DEPENDENCY MATRIX
+
+============================================================
+
+Dependency rule meaning:
+
+- 0 = asset in associated dependency column must be launched with or before the asset in the associated row.
+
+- -1 = asset in associated dependency column must be launched before the asset in the associated row.
+
+Assets in dependency matrix:
+
+- O2fR pilot plant
+
+- Science mission
+
+- Shelter 1
+
+- Shelter 2
+
+- Shelter Assembly Systems
+
+- Comms system
+
+- Regolith Excavation Rover 1
+
+- Regolith Excavation Rover 2
+
+- Cargo Handling Rover - Light
+
+- Cargo Handling Rover - Heavy
+
+- Highly Dexterous Rover
+
+- Power Cable 1
+
+- Power Cable 2
+
+- Power Cable 3
+
+- Power Cable 4
+
+- VSAT 1
+
+- VSAT 2
+
+- VSAT 3
+
+Legacy dependency relationships:
+
+1. O2fR pilot plant depends on:
+
+   - Shelter 2: prior only (-1)
+
+   - Comms system: prior only (-1)
+
+   - Regolith Excavation Rover 1: same or prior (0)
+
+   - Cargo Handling Rover - Light: same or prior (0)
+
+   - Cargo Handling Rover - Heavy: same or prior (0)
+
+   - Power Cable 1: same or prior (0)
+
+2. Science mission depends on:
+
+   - Shelter 1: prior only (-1)
+
+   - Comms system: prior only (-1)
+
+   - Cargo Handling Rover - Heavy: same or prior (0)
+
+   - Power Cable 2: same or prior (0)
+
+3. Shelter 1 depends on:
+
+   - Shelter Assembly Systems: same or prior (0)
+
+   - Regolith Excavation Rover 1: same or prior (0)
+
+   - Regolith Excavation Rover 2: same or prior (0)
+
+   - Cargo Handling Rover - Light: same or prior (0)
+
+   - Cargo Handling Rover - Heavy: same or prior (0)
+
+4. Shelter 2 depends on:
+
+   - Shelter Assembly Systems: same or prior (0)
+
+   - Regolith Excavation Rover 1: same or prior (0)
+
+   - Regolith Excavation Rover 2: same or prior (0)
+
+   - Cargo Handling Rover - Light: same or prior (0)
+
+   - Cargo Handling Rover - Heavy: same or prior (0)
+
+5. VSAT 1 depends on:
+
+   - Power Cable 1: same or prior (0)
+
+6. VSAT 2 depends on:
+
+   - Power Cable 2: same or prior (0)
+
+7. VSAT 3 depends on:
+
+   - Power Cable 3: same or prior (0)
+
+In the Mars calculator:
+
+- Generalize this into an editable dependency table.
+
+- Add Mars-specific dependencies:
+
+  - Crew arrival requires habitat, ECLSS, power, energy storage, comms, emergency consumables, medical/safe haven, unloading/deployment assets, thermal control, and minimum mobility.
+
+  - ISRU requires power, feedstock access, storage, controls, and maintenance capability.
+
+  - Greenhouse requires habitat/interface volume, water, power, thermal control, lighting, nutrient stock, and crew or robotic tending capacity.
+
+  - Propellant ISRU requires oxygen production, methane production if enabled, liquefaction, storage, power, feedstock, and thermal management.
+
+============================================================
+
+MARS CALCULATOR INPUTS
+
+============================================================
+
+A. Scenario inputs
+
+- scenario_name
+
+- crew_count
+
+- surface_duration_sols
+
+- crew_arrival_sol
+
+- predeploy_cargo_missions_allowed
+
+- operating_mode: survival, exploration, science, thrive
+
+- resupply_window_months
+
+- target_days_of_supply_after_resupply
+
+- emergency_reserve_sols
+
+- contingency_margin_percent
+
+- confidence_margin_percent
+
+- include_greenhouse: true/false
+
+- include_propellant_isru: true/false
+
+- include_surface_construction: true/false
+
+- include_pressurized_rovers: true/false
+
+- include_return_vehicle_support: true/false
+
+B. Starship cargo inputs
+
+- landed_payload_kg_per_starship
+
+- packing_efficiency
+
+- unallocated_margin_percent
+
+- usable_payload_kg_per_starship
+
+- maximum_volume_m3_per_starship
+
+- launch_window_interval_months
+
+- cargo_mission_cost_per_kg, optional
+
+- cargo_mission_cost_per_tonne, optional
+
+- mission_risk_loss_probability, optional
+
+- spare_cargo_mission_policy: none, one_extra_per_window, probability_based
+
+C. Crew metabolic and ECLSS inputs
+
+- water_kg_per_crew_sol
+
+- oxygen_kg_per_crew_sol
+
+- dry_food_kg_per_crew_sol
+
+- hydrated_food_kg_per_crew_sol
+
+- CO2_generated_kg_per_crew_sol
+
+- water_recovery_rate
+
+- oxygen_recovery_rate
+
+- food_closure_fraction
+
+- hygiene_water_mode: minimal, standard, expanded
+
+- EVA_oxygen_kg_per_EVA_hour
+
+- EVA_water_kg_per_EVA_hour
+
+- airlock_loss_kg_per_cycle
+
+- cabin_leakage_kg_per_sol
+
+- ECLSS_spares_kg_per_crew_sol
+
+- ECLSS_filter_sorbent_kg_per_crew_sol
+
+D. Habitat inputs
+
+- crew_capacity_per_habitat
+
+- habitat_mass_kg
+
+- habitat_power_continuous_kw
+
+- habitat_power_peak_kw
+
+- habitat_volume_m3
+
+- radiation_shielding_mass_kg_per_habitat
+
+- shielding_local_material_fraction
+
+- thermal_power_kw_per_habitat
+
+- deployment_equipment_mass_kg
+
+- habitat_lifetime_sols
+
+- habitat_spares_percent_per_year
+
+- minimum_habitat_redundancy
+
+- medical_module_mass_kg
+
+- galley_hygiene_module_mass_kg
+
+E. Power inputs
+
+- power_architecture: solar, nuclear, hybrid
+
+- solar_array_specific_power_kw_per_kg
+
+- solar_array_degradation_percent_per_year
+
+- dust_derating_factor
+
+- seasonal_derating_factor
+
+- effective_sun_hours_per_sol
+
+- nuclear_unit_power_kw
+
+- nuclear_unit_mass_kg
+
+- power_distribution_mass_kg_per_kw_km
+
+- average_power_cable_length_km
+
+- critical_load_autonomy_sols
+
+- dust_storm_autonomy_sols
+
+- battery_specific_energy_kWh_per_kg
+
+- battery_depth_of_discharge
+
+- battery_roundtrip_efficiency
+
+- battery_unit_mass_kg
+
+- inverter_power_processing_margin
+
+- power_margin_percent
+
+F. ISRU inputs
+
+Separate ISRU into crew oxygen, water extraction, construction feedstock, and propellant production.
+
+- oxygen_ISRU_enabled
+
+- oxygen_ISRU_unit_mass_kg
+
+- oxygen_ISRU_unit_power_kw
+
+- oxygen_ISRU_output_kg_per_sol
+
+- oxygen_ISRU_utilization_factor
+
+- oxygen_ISRU_availability
+
+- water_ISRU_enabled
+
+- water_extraction_unit_mass_kg
+
+- water_extraction_unit_power_kw
+
+- regolith_processed_kg_per_sol_per_unit
+
+- regolith_water_mass_fraction
+
+- water_extraction_efficiency
+
+- propellant_ISRU_enabled
+
+- propellant_O2_target_kg_per_window
+
+- propellant_CH4_target_kg_per_window
+
+- propellant_production_deadline_sols
+
+- propellant_storage_mass_fraction
+
+- propellant_power_kw_per_kg_per_sol
+
+- detailed_propellant_stoichiometry_enabled
+
+============================================================
+
+CORE FORMULAS
+
+============================================================
+
+1. Time conversion
+
+hours_per_sol = 24.65979
+
+earth_days_per_sol = hours_per_sol / 24
+
+surface_duration_earth_days = surface_duration_sols * earth_days_per_sol
+
+resupply_window_earth_days = resupply_window_months * 30.4375
+
+resupply_window_sols = resupply_window_earth_days / earth_days_per_sol
+
+2. Starship usable payload
+
+usable_payload_kg =
+
+  landed_payload_kg_per_starship
+
+  * packing_efficiency
+
+  * (1 - unallocated_margin_percent)
+
+cargo_missions_required = ceil(total_landed_mass_kg / usable_payload_kg)
+
+3. Gross crew consumables
+
+gross_resource_kg =
+
+  crew_count
+
+  * rate_kg_per_crew_sol
+
+  * duration_sols
+
+4. Oxygen
+
+gross_O2_kg =
+
+  crew_count
+
+  * oxygen_kg_per_crew_sol
+
+  * duration_sols
+
+recovered_O2_kg =
+
+  gross_O2_kg
+
+  * oxygen_recovery_rate
+
+O2_makeup_kg_before_ISRU =
+
+  gross_O2_kg
+
+  - recovered_O2_kg
+
+  + EVA_O2_kg
+
+  + airlock_loss_kg
+
+  + cabin_leakage_kg
+
+O2_import_required_kg =
+
+  max(0, O2_makeup_kg_before_ISRU - O2_ISRU_produced_kg)
+
+O2_storage_required_kg =
+
+  O2_makeup_rate_kg_per_sol
+
+  * emergency_reserve_sols
+
+  * storage_margin
+
+5. Water
+
+gross_water_kg =
+
+  crew_count
+
+  * water_kg_per_crew_sol
+
+  * duration_sols
+
+recovered_water_kg =
+
+  gross_water_kg
+
+  * water_recovery_rate
+
+water_makeup_kg_before_ISRU =
+
+  gross_water_kg
+
+  - recovered_water_kg
+
+  + EVA_water_kg
+
+  + greenhouse_water_makeup_kg
+
+water_import_required_kg =
+
+  max(0, water_makeup_kg_before_ISRU - water_ISRU_produced_kg)
+
+water_storage_required_kg =
+
+  water_makeup_rate_kg_per_sol
+
+  * emergency_reserve_sols
+
+  * storage_margin
+
+6. Food
+
+gross_food_kg =
+
+  crew_count
+
+  * food_kg_per_crew_sol
+
+  * duration_sols
+
+food_produced_kg =
+
+  gross_food_kg
+
+  * food_closure_fraction
+
+food_import_required_kg =
+
+  max(0, gross_food_kg - food_produced_kg)
+
+food_storage_required_kg =
+
+  crew_count
+
+  * food_kg_per_crew_sol
+
+  * emergency_reserve_sols
+
+  * storage_margin
+
+7. Habitat count
+
+habitat_count_base =
+
+  ceil(crew_count / crew_capacity_per_habitat)
+
+habitat_count =
+
+  habitat_count_base + minimum_habitat_redundancy
+
+habitat_mass_total =
+
+  habitat_count * habitat_mass_kg
+
+  + radiation_shielding_mass_imported_kg
+
+  + deployment_equipment_mass_kg
+
+8. Asset quantities
+
+For each asset:
+
+quantity_required =
+
+  quantity_fixed
+
+  + quantity_per_crew * crew_count
+
+  + quantity_per_habitat * habitat_count
+
+  + quantity_per_power_unit * power_unit_count
+
+  + quantity_per_ISRU_unit * ISRU_unit_count
+
+Round up to integer unless fractional quantities are explicitly allowed.
+
+9. Oxygen ISRU sizing
+
+required_O2_production_kg_per_sol =
+
+  O2_makeup_kg_before_ISRU / duration_sols
+
+effective_O2_output_per_unit =
+
+  oxygen_ISRU_output_kg_per_sol
+
+  * oxygen_ISRU_utilization_factor
+
+  * oxygen_ISRU_availability
+
+oxygen_ISRU_units_required =
+
+  ceil(required_O2_production_kg_per_sol / effective_O2_output_per_unit)
+
+oxygen_ISRU_mass =
+
+  oxygen_ISRU_units_required * oxygen_ISRU_unit_mass_kg
+
+oxygen_ISRU_power_kw =
+
+  oxygen_ISRU_units_required * oxygen_ISRU_unit_power_kw
+
+Guard against divide-by-zero if effective_O2_output_per_unit <= 0.
+
+10. Propellant ISRU sizing
+
+Keep this separate from survival oxygen.
+
+propellant_O2_rate_kg_per_sol =
+
+  propellant_O2_target_kg / propellant_production_deadline_sols
+
+propellant_O2_ISRU_units =
+
+  ceil(propellant_O2_rate_kg_per_sol / effective_O2_output_per_unit)
+
+Report:
+
+- crew_survival_ISRU_mass
+
+- crew_survival_ISRU_power
+
+- propellant_ISRU_mass
+
+- propellant_ISRU_power
+
+- total_ISRU_mass
+
+- total_ISRU_power
+
+11. Water extraction
+
+water_output_kg_per_sol_per_unit =
+
+  regolith_processed_kg_per_sol_per_unit
+
+  * regolith_water_mass_fraction
+
+  * water_extraction_efficiency
+
+  * water_ISRU_availability
+
+water_extraction_units =
+
+  ceil(water_required_kg_per_sol / water_output_kg_per_sol_per_unit)
+
+12. Power balance
+
+For each asset:
+
+asset_peak_power_kw =
+
+  quantity * power_peak_kw
+
+asset_continuous_power_kw =
+
+  quantity * power_continuous_kw
+
+asset_average_power_kw =
+
+  quantity * power_peak_kw * duty_cycle
+
+asset_energy_kWh_per_sol =
+
+  asset_average_power_kw * hours_per_sol
+
+unless explicit energy_kWh_per_sol is provided.
+
+Total:
+
+total_continuous_power_kw =
+
+  sum(asset_continuous_power_kw)
+
+  + habitat_power
+
+  + ECLSS_power
+
+  + ISRU_power
+
+  + thermal_power
+
+total_peak_power_kw =
+
+  sum(asset_peak_power_kw) * simultaneity_factor
+
+total_energy_kWh_per_sol =
+
+  sum(asset_energy_kWh_per_sol)
+
+  + habitat_energy
+
+  + ECLSS_energy
+
+  + ISRU_energy
+
+  + thermal_energy
+
+required_generation_kw =
+
+  total_continuous_power_kw * (1 + power_margin_percent)
+
+13. Solar sizing
+
+solar_generation_required_kW =
+
+  total_energy_kWh_per_sol / effective_sun_hours_per_sol
+
+solar_generation_required_kW_derated =
+
+  solar_generation_required_kW
+
+  / (dust_derating_factor * seasonal_derating_factor)
+
+solar_array_mass_kg =
+
+  solar_generation_required_kW_derated
+
+  / solar_array_specific_power_kw_per_kg
+
+14. Nuclear sizing
+
+nuclear_units_required =
+
+  ceil(required_generation_kw / nuclear_unit_power_kw)
+
+nuclear_mass_kg =
+
+  nuclear_units_required * nuclear_unit_mass_kg
+
+15. Energy storage
+
+critical_load_kw =
+
+  sum(loads marked critical)
+
+autonomy_hours =
+
+  autonomy_sols * hours_per_sol
+
+storage_kWh_required =
+
+  critical_load_kw
+
+  * autonomy_hours
+
+  / battery_roundtrip_efficiency
+
+  / battery_depth_of_discharge
+
+battery_mass_kg =
+
+  storage_kWh_required / battery_specific_energy_kWh_per_kg
+
+battery_units_required =
+
+  ceil(battery_mass_kg / battery_unit_mass_kg)
+
+16. Spares and sustainment
+
+For each hardware asset:
+
+annual_spares_kg =
+
+  installed_asset_mass_kg * spares_percent_per_year
+
+period_spares_kg =
+
+  annual_spares_kg * surface_duration_earth_days / 365.25
+
+For each resupply window:
+
+resupply_consumables_kg =
+
+  crew_count
+
+  * net_consumables_kg_per_crew_sol
+
+  * resupply_window_sols
+
+resupply_spares_kg =
+
+  installed_hardware_mass_kg
+
+  * annual_spares_rate
+
+  * resupply_window_earth_days / 365.25
+
+resupply_total_kg =
+
+  resupply_consumables_kg
+
+  + resupply_spares_kg
+
+  + replacement_hardware_kg
+
+  + science_payload_replenishment_kg
+
+  + medical_kg
+
+  + contingency_kg
+
+resupply_starships_required =
+
+  ceil(resupply_total_kg / usable_payload_kg_per_starship)
+
+============================================================
+
+MISSION PACKING ALGORITHM
+
+============================================================
+
+Do not only compute ceil(total_mass / usable_payload). Generate dependency-aware mission manifests.
+
+Each cargo item must have:
+
+- asset_id
+
+- asset_name
+
+- mass_kg
+
+- volume_m3
+
+- required_phase
+
+- earliest_mission
+
+- latest_mission
+
+- must_arrive_before_crew
+
+- can_arrive_after_crew
+
+- dependencies_prior
+
+- dependencies_same_or_prior
+
+- criticality: critical, important, optional
+
+- scenario_group
+
+Algorithm:
+
+1. Build required asset list from scenario.
+
+2. Expand quantities into cargo items or grouped pallets.
+
+3. Mark critical pre-crew items:
+
+   - power generation
+
+   - energy storage
+
+   - power distribution
+
+   - communications
+
+   - habitat/safe haven
+
+   - ECLSS
+
+   - thermal control
+
+   - emergency water/O2/food stores
+
+   - medical module
+
+   - unloading/deployment assets
+
+   - mobility required for unloading
+
+4. Sort by dependency level, criticality, and phase.
+
+5. Pack into cargo missions using:
+
+   - usable_payload_kg_per_starship
+
+   - maximum_volume_m3_per_starship, if available
+
+   - dependency rules
+
+6. Dependency rules:
+
+   - prior dependency must be on an earlier mission.
+
+   - same_or_prior dependency may be on the same or earlier mission.
+
+7. Calculate mission-level cumulative values:
+
+   - allocated_mass_kg
+
+   - mass_margin_kg
+
+   - allocated_volume_m3
+
+   - volume_margin_m3
+
+   - delivered_power_capacity_kw
+
+   - delivered_energy_storage_kWh
+
+   - cumulative_crew_capacity
+
+   - cumulative_habitat_capacity
+
+   - cumulative_life_support_capacity
+
+   - cumulative_days_of_supply
+
+   - dependency_status
+
+   - readiness_status
+
+8. Crew arrival is allowed only when all readiness checks pass.
+
+============================================================
+
+READINESS CHECKS
+
+============================================================
+
+Create red/yellow/green pass-fail checks:
+
+Crew arrival readiness:
+
+- habitat capacity >= crew_count
+
+- safe-haven capacity >= crew_count
+
+- ECLSS online
+
+- critical power margin >= 0
+
+- critical energy storage autonomy >= required autonomy
+
+- oxygen storage + production supports emergency reserve
+
+- water storage + production supports emergency reserve
+
+- food storage supports emergency reserve
+
+- comms online
+
+- thermal control online
+
+- medical/safe haven available
+
+- unloading/deployment assets available
+
+- minimum mobility available
+
+- dependency rules met
+
+- no critical asset past lifetime without spare/replacement plan
+
+- resupply interval does not exceed stockpile endurance
+
+Sustainment readiness:
+
+- resupply mass/window <= cargo capacity/window
+
+- spares replacement interval <= asset lifetime
+
+- consumable stockpile never goes negative
+
+- power margin remains positive during dust/autonomy case
+
+- ISRU production does not create hidden power shortfall
+
+- crew time demand does not exceed available crew-hours, if crew-time module is enabled
+
+============================================================
+
+DASHBOARD OUTPUTS
+
+============================================================
+
+Top dashboard cards:
+
+- scenario name
+
+- crew count
+
+- operating mode
+
+- surface duration in sols
+
+- surface duration in Earth days
+
+- Starship landed payload assumption
+
+- Starship usable payload assumption
+
+- total initial landed mass
+
+- total pre-crew landed mass
+
+- total post-crew landed mass
+
+- cargo Starships required before crew arrival
+
+- cargo Starships required for full baseline setup
+
+- cargo Starships required per resupply window
+
+- resupply mass per selected window
+
+- total installed power capacity
+
+- total critical load
+
+- power margin
+
+- total energy storage
+
+- storage autonomy in sols
+
+- net water import required
+
+- net O2 import required
+
+- net food import required
+
+- water ISRU production rate
+
+- oxygen ISRU production rate
+
+- maximum crew-sols supportable by current stockpile
+
+- limiting resource
+
+- top five mass drivers
+
+Required tables:
+
+- Scenario assumptions
+
+- Crew and mission timeline
+
+- Life-support mass balance
+
+- Power balance
+
+- Energy storage
+
+- ISRU sizing
+
+- Asset catalog
+
+- Required asset quantities
+
+- Initial landed mass by category
+
+- Resupply mass by category
+
+- Mission manifest
+
+- Dependency matrix
+
+- Readiness checks
+
+- Sensitivity analysis
+
+Charts:
+
+- Initial landed mass by category
+
+- Resupply mass by category
+
+- Power supply vs demand
+
+- Water/O2/food stockpile over time
+
+- Starship missions required vs crew count
+
+- Starship missions required vs usable payload
+
+- Resupply mass vs resupply interval
+
+- ISRU production vs demand
+
+============================================================
+
+SENSITIVITY ANALYSIS
+
+============================================================
+
+Allow users to vary:
+
+- crew_count
+
+- landed_payload_kg_per_starship
+
+- packing_efficiency
+
+- unallocated_margin
+
+- water recovery rate
+
+- oxygen recovery rate
+
+- food closure fraction
+
+- power architecture
+
+- battery specific energy
+
+- solar dust derating
+
+- ISRU production rate
+
+- spares percent per year
+
+- emergency reserve sols
+
+- resupply window months
+
+For each sensitivity case, output:
+
+- initial landed mass
+
+- pre-crew missions
+
+- total setup missions
+
+- resupply mass per window
+
+- resupply Starships per window
+
+- power margin
+
+- energy storage autonomy
+
+- limiting resource
+
+- top mass driver
+
+============================================================
+
+VALIDATION AND TESTS
+
+============================================================
+
+Add unit tests for:
+
+- sol/Earth-day conversion
+
+- kW vs kWh calculations
+
+- legacy habitat water and oxygen calculations
+
+- legacy battery sizing
+
+- legacy day-power total: 108.15 kW peak and 62.4 kW continuous
+
+- legacy night-energy totals: 17,522.4 kWh thrive and 2,066.4 kWh survive
+
+- legacy total mass reproduction: 99,174.4 kg thrive and 21,891.4 kg survive
+
+- Starship usable payload calculation
+
+- consumables with recovery
+
+- ISRU unit sizing
+
+- habitat quantity sizing
+
+- mission packing mass margin
+
+- dependency checking
+
+- resupply mass calculation
+
+- no negative imports after ISRU; clamp to zero
+
+- no divide-by-zero when production capacity is zero
+
+- no crew arrival when readiness checks fail
+
+============================================================
+
+UI REQUIREMENTS
+
+============================================================
+
+The app should include:
+
+- Sidebar scenario controls
+
+- Main dashboard
+
+- Editable assumption tables
+
+- Editable asset catalog
+
+- Editable dependency matrix
+
+- Import/export buttons
+
+- Clear units on every field
+
+- Tooltips explaining each input
+
+- Warnings when values are placeholders
+
+- Red/yellow/green readiness indicators
+
+- Ability to compare scenarios side-by-side
+
+- Downloadable mission manifest
+
+- Downloadable assumptions package
+
+Warnings to display:
+
+- "Legacy lunar-derived values are placeholders and are not validated Mars system design values."
+
+- "Starship landed Mars payload is scenario-configurable and should not be treated as fixed."
+
+- "Crew oxygen and propellant oxygen are modeled separately."
+
+- "Power capacity and energy storage are both required; average power alone is insufficient."
+
+- "Crew arrival is blocked unless minimum survival readiness checks pass."
+
+============================================================
+
+README REQUIREMENTS
+
+============================================================
+
+README.md must explain:
+
+- What the calculator does.
+
+- What the calculator does not do.
+
+- Assumptions and limitations.
+
+- How to run the app.
+
+- How to run tests.
+
+- How to update assets.
+
+- How to update dependencies.
+
+- How to import/export scenarios.
+
+- How to interpret outputs.
+
+- Difference between survival, exploration, science, and thrive modes.
+
+- Difference between crew life-support ISRU and propellant ISRU.
+
+- Why Starship payload is configurable rather than fixed.
+
+- Which values came from legacy lunar analogs.
+
+- Which values are Mars-specific constants.
+
+- Which values require engineering review.
+
+Deliver a working first version with clean code, test coverage, and enough default data for the team to run example scenarios immediately.
