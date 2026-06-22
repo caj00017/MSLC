@@ -64,61 +64,150 @@ def _source_badge(key: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Sidebar - scenario controls.
+# Workflow definition — the "analysis on rails" outline.
+#
+# The 4 stages below organise every screen of the app into an end-to-end path:
+# Configuration -> Analysis -> Visualization -> Interpretation. Each stage owns
+# a set of steps; each step maps to one of the existing render functions. The
+# left sidebar navigates between stages (persistently), the main area shows the
+# steps of the current stage as tabs, and Back/Continue buttons walk the rails.
 # ---------------------------------------------------------------------------
 
-def sidebar() -> None:
-    st.sidebar.title("🚀 Scenario controls")
+WORKFLOW = [
+    {
+        "key": "config", "icon": "⚙️", "label": "1 · Configuration",
+        "intro": "**Start here.** Define the scenario and the data the engine runs on. "
+                 "Everything you enter persists as you move through the workflow — the "
+                 "sidebar controls and these tabs edit the *same* scenario, so a change "
+                 "in one place shows up everywhere. Work top to bottom: review your "
+                 "assumptions, adjust the asset catalog and dependencies, then import or "
+                 "export a scenario package if you want to save or share it.",
+        "steps": [("Assumptions", "assumptions"), ("Asset catalog", "assets"),
+                  ("Dependencies", "dependencies"), ("Import / Export", "io")],
+    },
+    {
+        "key": "analysis", "icon": "📊", "label": "2 · Analysis",
+        "intro": "**The engine output.** With the scenario configured, this stage shows "
+                 "what it produces: headline dashboard numbers, the dependency-aware "
+                 "mission manifest, the red/yellow/green readiness gates that decide "
+                 "whether crew may arrive, and the detailed mass / power / life-support "
+                 "tables behind the headlines.",
+        "steps": [("Dashboard", "dashboard"), ("Mission manifest", "missions"),
+                  ("Readiness checks", "readiness"), ("Detail tables", "tables")],
+    },
+    {
+        "key": "viz", "icon": "📈", "label": "3 · Visualization",
+        "intro": "**See the trends.** Charts of landed mass by category, power supply "
+                 "vs demand, missions vs crew and payload, resupply vs interval, and "
+                 "ISRU production vs demand. Use these to spot what drives the result "
+                 "before you interpret it.",
+        "steps": [("Charts", "charts")],
+    },
+    {
+        "key": "interpret", "icon": "🧭", "label": "4 · Interpretation",
+        "intro": "**Make the call.** A guided reading of *your* results — what the "
+                 "limiting resource and mass drivers mean, how to use the sensitivity "
+                 "sweeps and dependency rules, how to compare scenarios side by side, "
+                 "and how the legacy lunar case validates the engine.",
+        "steps": [("Reading guide", "guide"), ("Sensitivity", "sensitivity"),
+                  ("Compare scenarios", "compare"), ("Legacy validation", "legacy")],
+    },
+]
 
-    preset = st.sidebar.selectbox("Load a preset scenario",
-                                  ["(keep current)"] + list(defaults.SCENARIO_PRESETS))
-    if preset != "(keep current)" and st.sidebar.button("Apply preset", use_container_width=True):
-        st.session_state.assumptions = defaults.scenario_preset(preset)
-        st.rerun()
 
+def _stage_labels() -> list:
+    return [f"{w['icon']}  {w['label']}" for w in WORKFLOW]
+
+
+def _goto_stage(idx: int) -> None:
+    """Move the persistent workflow selection to stage ``idx`` and rerun."""
+    idx = max(0, min(idx, len(WORKFLOW) - 1))
+    st.session_state.wf_radio = _stage_labels()[idx]
+    st.rerun()
+
+
+# ---------------------------------------------------------------------------
+# Sidebar — workflow outline + persistent scenario controls.
+# ---------------------------------------------------------------------------
+
+def workflow_sidebar() -> int:
+    """Render the navigable workflow outline and return the active stage index."""
+    st.sidebar.title("🚀 Mars Logistics")
+    st.sidebar.caption("**Analysis on rails.** Step through configure → analyze → "
+                       "visualize → interpret. Your entries persist across every step.")
+
+    labels = _stage_labels()
+    if "wf_radio" not in st.session_state:
+        st.session_state.wf_radio = labels[0]
+    # The radio is the navigable outline; its selection is persisted by Streamlit
+    # under the "wf_radio" key, so Back/Continue buttons drive it programmatically.
+    st.sidebar.radio("Workflow stage", labels, key="wf_radio",
+                     label_visibility="collapsed")
+    idx = labels.index(st.session_state.wf_radio)
+
+    steps = WORKFLOW[idx]["steps"]
+    st.sidebar.markdown("**This stage's steps:**")
+    st.sidebar.markdown("\n".join(f"- {name}" for name, _ in steps))
+    st.sidebar.divider()
+    return idx
+
+
+def config_sidebar() -> None:
+    """Persistent scenario controls. Always available, on every stage."""
     a = assumptions()
-    st.sidebar.text_input("Scenario name", key="scenario_name",
-                          value=a["scenario_name"],
-                          on_change=lambda: a.update(
-                              scenario_name=st.session_state.scenario_name))
 
-    st.sidebar.subheader("Headline inputs")
-    a["crew_count"] = st.sidebar.number_input(
-        "Crew count (people)", min_value=1, max_value=1000,
-        value=int(a["crew_count"]), step=1,
-        help=defaults.FIELD_METADATA["crew_count"]["help"])
-    a["operating_mode"] = st.sidebar.selectbox(
-        "Operating mode", defaults.OPERATING_MODES,
-        index=defaults.OPERATING_MODES.index(a["operating_mode"]),
-        help=defaults.FIELD_METADATA["operating_mode"]["help"])
-    a["surface_duration_sols"] = st.sidebar.number_input(
-        "Surface duration (sols)", min_value=1, value=int(a["surface_duration_sols"]),
-        help=defaults.FIELD_METADATA["surface_duration_sols"]["help"])
-    a["landed_payload_kg_per_starship"] = st.sidebar.number_input(
-        "Starship landed payload (kg) ⚠️configurable", min_value=1000.0,
-        value=float(a["landed_payload_kg_per_starship"]), step=5000.0,
-        help=defaults.FIELD_METADATA["landed_payload_kg_per_starship"]["help"])
-    a["power_architecture"] = st.sidebar.selectbox(
-        "Power architecture", ["solar", "nuclear", "hybrid"],
-        index=["solar", "nuclear", "hybrid"].index(a["power_architecture"]))
-    a["resupply_window_months"] = st.sidebar.number_input(
-        "Resupply window (Earth months)", min_value=1.0,
-        value=float(a["resupply_window_months"]),
-        help=defaults.FIELD_METADATA["resupply_window_months"]["help"])
+    with st.sidebar.expander("⚙️ Quick configuration", expanded=True):
+        st.caption("These controls and the Configuration tabs edit the same scenario. "
+                   "Changes persist across the whole workflow.")
+        preset = st.selectbox("Load a preset scenario",
+                              ["(keep current)"] + list(defaults.SCENARIO_PRESETS))
+        if preset != "(keep current)" and st.button("Apply preset",
+                                                     use_container_width=True):
+            st.session_state.assumptions = defaults.scenario_preset(preset)
+            st.rerun()
 
-    st.sidebar.subheader("Capability toggles")
-    for flag in ("include_greenhouse", "include_propellant_isru",
-                 "include_surface_construction", "include_pressurized_rovers",
-                 "oxygen_ISRU_enabled", "water_ISRU_enabled"):
-        a[flag] = st.sidebar.checkbox(flag.replace("_", " "), value=bool(a[flag]),
-                                      help=defaults.FIELD_METADATA.get(flag, {}).get("help"))
+        st.text_input("Scenario name", key="scenario_name",
+                      value=a["scenario_name"],
+                      on_change=lambda: a.update(
+                          scenario_name=st.session_state.scenario_name))
 
-    if st.sidebar.button("Reset to defaults", use_container_width=True):
-        st.session_state.assumptions = defaults.default_assumptions()
-        st.rerun()
+        a["crew_count"] = st.number_input(
+            "Crew count (people)", min_value=1, max_value=1000,
+            value=int(a["crew_count"]), step=1,
+            help=defaults.FIELD_METADATA["crew_count"]["help"])
+        a["operating_mode"] = st.selectbox(
+            "Operating mode", defaults.OPERATING_MODES,
+            index=defaults.OPERATING_MODES.index(a["operating_mode"]),
+            help=defaults.FIELD_METADATA["operating_mode"]["help"])
+        a["surface_duration_sols"] = st.number_input(
+            "Surface duration (sols)", min_value=1, value=int(a["surface_duration_sols"]),
+            help=defaults.FIELD_METADATA["surface_duration_sols"]["help"])
+        a["landed_payload_kg_per_starship"] = st.number_input(
+            "Starship landed payload (kg) ⚠️configurable", min_value=1000.0,
+            value=float(a["landed_payload_kg_per_starship"]), step=5000.0,
+            help=defaults.FIELD_METADATA["landed_payload_kg_per_starship"]["help"])
+        a["power_architecture"] = st.selectbox(
+            "Power architecture", ["solar", "nuclear", "hybrid"],
+            index=["solar", "nuclear", "hybrid"].index(a["power_architecture"]))
+        a["resupply_window_months"] = st.number_input(
+            "Resupply window (Earth months)", min_value=1.0,
+            value=float(a["resupply_window_months"]),
+            help=defaults.FIELD_METADATA["resupply_window_months"]["help"])
+
+        st.markdown("**Capability toggles**")
+        for flag in ("include_greenhouse", "include_propellant_isru",
+                     "include_surface_construction", "include_pressurized_rovers",
+                     "oxygen_ISRU_enabled", "water_ISRU_enabled"):
+            a[flag] = st.checkbox(flag.replace("_", " "), value=bool(a[flag]),
+                                  help=defaults.FIELD_METADATA.get(flag, {}).get("help"))
+
+        if st.button("Reset to defaults", use_container_width=True):
+            st.session_state.assumptions = defaults.default_assumptions()
+            st.rerun()
 
     st.sidebar.caption("⚠️ Many defaults are legacy lunar-derived placeholders. "
-                       "Edit them on the Assumptions tab before trusting outputs.")
+                       "Edit them on the Configuration → Assumptions step before "
+                       "trusting outputs.")
 
 
 # ---------------------------------------------------------------------------
@@ -509,45 +598,184 @@ def export_tab(results: dict) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Interpretation guide — instructional "how to read your results", with a
+# focus on sensitivities and dependencies (explicitly requested by the client).
+# ---------------------------------------------------------------------------
+
+def interpretation_guide(results: dict) -> None:
+    d = results["dashboard"]
+    lim = results["limiting_resource"]
+    drivers = results["mass"]["top_drivers"]
+    ready = results["readiness"]
+    m = results["missions"]
+
+    st.subheader("How to read this analysis")
+    st.markdown(
+        "You have followed the workflow from **Configuration** (inputs) through "
+        "**Analysis** and **Visualization** (outputs). This page interprets *your* "
+        "current numbers and points you back to the controls that move them.")
+
+    # --- Limiting resource ---------------------------------------------------
+    st.markdown(f"### 🔻 Limiting resource: **{lim['name']}**")
+    st.markdown(
+        "The limiting resource is the binding constraint — the one with the least "
+        "*slack* (margin relative to its requirement). Relieve this first; changing "
+        "anything else will not move the bottom line until you do.")
+    ranked = pd.DataFrame(lim["ranked"], columns=["constraint", "slack (fraction)"])
+    ranked["slack (fraction)"] = ranked["slack (fraction)"].round(3)
+    st.dataframe(ranked, use_container_width=True, hide_index=True)
+    st.caption("Negative slack = the constraint is violated. Small positive = tight. "
+               "Large = comfortable. The top row is what is holding you back.")
+
+    # --- Mass drivers --------------------------------------------------------
+    st.markdown("### ⚖️ Top mass drivers")
+    if drivers:
+        top = drivers[0]
+        st.markdown(
+            f"**{top[0]}** dominates landed mass at **{top[1]/1000:,.1f} t**. Mass drivers "
+            "are where design changes pay off most: a 10% cut on the top driver beats a "
+            "50% cut on a small one. Trace each driver back to the asset catalog "
+            "(Configuration → Asset catalog) or the consumable rates (Assumptions).")
+        st.dataframe(pd.DataFrame(drivers, columns=["category", "mass_kg"]).head(5),
+                     use_container_width=True, hide_index=True)
+
+    # --- Sensitivities -------------------------------------------------------
+    st.markdown("### 🎚️ Using the sensitivity sweeps")
+    st.markdown(
+        "Sensitivity analysis varies **one parameter at a time** and re-runs the whole "
+        "engine, so you see how each input bends the outcome. Open "
+        "**Interpretation → Sensitivity**, pick parameters, and run a sweep. Read each "
+        "row as *“if this input were X, the mission count / power margin / limiting "
+        "resource would become Y.”*\n\n"
+        "Parameters worth sweeping first, and why they matter:")
+    st.table(pd.DataFrame([
+        {"parameter": "landed_payload_kg_per_starship",
+         "why it matters": "Largest lever on mission count; it is configurable, not a known fact."},
+        {"parameter": "crew_count",
+         "why it matters": "Scales consumables, habitat, power and ISRU together."},
+        {"parameter": "water/oxygen recovery rate",
+         "why it matters": "Drives net imports and resupply mass directly."},
+        {"parameter": "oxygen_ISRU_output_kg_per_sol",
+         "why it matters": "Determines whether ISRU offsets imports or just adds power load."},
+        {"parameter": "emergency_reserve_sols / resupply_window_months",
+         "why it matters": "Set stockpile size and resupply cadence — common readiness blockers."},
+    ]))
+
+    # --- Dependencies --------------------------------------------------------
+    st.markdown("### 🔗 How dependencies shape the manifest")
+    st.markdown(
+        "The dependency table (Configuration → Dependencies) is what makes this more "
+        "than `ceil(mass / payload)`. Each rule says an asset must land **before** "
+        "(rule = −1) or **with or before** (rule = 0) the asset that needs it. The "
+        "packer honours those rules when it assigns assets to missions, which is why "
+        "the packed mission count "
+        f"(**{m['setup_missions_packed']}**) can exceed the naive estimate "
+        f"(**{m['setup_missions_simple']}**).\n\n"
+        "Dependencies also decide **what must arrive before crew**: power, energy "
+        "storage, comms, habitat, ECLSS, thermal, emergency consumables and unloading "
+        "mobility all gate crew arrival. Pre-crew missions for this scenario: "
+        f"**{m['pre_crew_missions']}**.")
+    if m["dependency_violations"]:
+        st.error(f"{len(m['dependency_violations'])} unmet dependency(ies) detected — "
+                 "review the Dependencies step and the Mission manifest: "
+                 f"{m['dependency_violations']}")
+    else:
+        st.success("All dependency rules are currently satisfied by the packed manifest.")
+
+    # --- Readiness -----------------------------------------------------------
+    st.markdown("### 🚦 Reading the readiness gates")
+    if ready["crew_arrival_allowed"]:
+        st.success("Crew arrival is currently **allowed** — every critical gate is green.")
+    else:
+        st.error("Crew arrival is currently **blocked**. Each failing gate below points "
+                 "to the input that must change: " + ", ".join(ready["blocking_checks"]))
+    st.markdown(
+        "Red gates block crew arrival; yellow gates are warnings to resolve before "
+        "committing. Fix a red gate by adjusting the relevant Configuration input (more "
+        "power units, more batteries, larger reserves, an extra habitat) and watch the "
+        "gate turn green on the Analysis → Readiness step.")
+
+    st.divider()
+    st.markdown("### ⚠️ Before you trust any number")
+    for w in defaults.PLACEHOLDER_WARNINGS:
+        st.caption("• " + w)
+
+
+# ---------------------------------------------------------------------------
+# Persistent scenario banner — shown on every stage so the configured scenario
+# and its headline outcome stay visible while stepping through the workflow.
+# ---------------------------------------------------------------------------
+
+def scenario_banner(results: dict) -> None:
+    d = results["dashboard"]
+    ready = results["readiness"]
+    c = st.columns(5)
+    c[0].metric("Scenario", d["scenario_name"])
+    c[1].metric("Crew", _fmt(d["crew_count"]))
+    c[2].metric("Mode", d["operating_mode"])
+    c[3].metric("Setup Starships", _fmt(d["cargo_starships_full_setup"]))
+    c[4].metric("Crew arrival",
+                "✅ allowed" if ready["crew_arrival_allowed"] else "⛔ blocked")
+
+
+# ---------------------------------------------------------------------------
 # Main.
 # ---------------------------------------------------------------------------
 
 def main() -> None:
-    sidebar()
+    stage_idx = workflow_sidebar()
+    config_sidebar()
+
     st.title("Mars Surface Logistics Calculator")
-    st.caption("Estimates landed mass, cargo missions, power, consumables, ISRU, and "
-               "resupply to sustain N humans on Mars using Starship-sized cargo missions.")
 
     results = run_model(assumptions(), st.session_state.assets,
                         st.session_state.dependencies)
 
-    tabs = st.tabs(["Dashboard", "Charts", "Assumptions", "Assets", "Dependencies",
-                    "Missions", "Readiness", "Tables", "Sensitivity", "Compare",
-                    "Legacy", "Import/Export"])
-    with tabs[0]:
-        dashboard_tab(results)
-    with tabs[1]:
-        charts_tab(results)
-    with tabs[2]:
-        assumptions_tab()
-    with tabs[3]:
-        assets_tab()
-    with tabs[4]:
-        dependencies_tab()
-    with tabs[5]:
-        missions_tab(results)
-    with tabs[6]:
-        readiness_tab(results)
-    with tabs[7]:
-        tables_tab(results)
-    with tabs[8]:
-        sensitivity_tab()
-    with tabs[9]:
-        compare_tab(results)
-    with tabs[10]:
-        legacy_tab()
-    with tabs[11]:
-        export_tab(results)
+    # Persistent banner keeps the configured scenario + outcome in view always.
+    scenario_banner(results)
+
+    renderers = {
+        "assumptions": lambda: assumptions_tab(),
+        "assets": lambda: assets_tab(),
+        "dependencies": lambda: dependencies_tab(),
+        "io": lambda: export_tab(results),
+        "dashboard": lambda: dashboard_tab(results),
+        "missions": lambda: missions_tab(results),
+        "readiness": lambda: readiness_tab(results),
+        "tables": lambda: tables_tab(results),
+        "charts": lambda: charts_tab(results),
+        "guide": lambda: interpretation_guide(results),
+        "sensitivity": lambda: sensitivity_tab(),
+        "compare": lambda: compare_tab(results),
+        "legacy": lambda: legacy_tab(),
+    }
+
+    stage = WORKFLOW[stage_idx]
+    total = len(WORKFLOW)
+    st.progress((stage_idx + 1) / total,
+                text=f"Step {stage_idx + 1} of {total}  ·  {stage['label']}")
+    st.header(f"{stage['icon']} {stage['label']}")
+    st.markdown(stage["intro"])
+
+    # The stage's steps stay organised as tabs — coordinating the tab layout the
+    # client liked with the new left-hand workflow outline.
+    step_tabs = st.tabs([name for name, _ in stage["steps"]])
+    for tab, (name, key) in zip(step_tabs, stage["steps"]):
+        with tab:
+            renderers[key]()
+
+    st.divider()
+    nav = st.columns([2, 2, 3])
+    if stage_idx > 0:
+        if nav[0].button(f"← Back: {WORKFLOW[stage_idx - 1]['label']}",
+                         use_container_width=True):
+            _goto_stage(stage_idx - 1)
+    if stage_idx < total - 1:
+        if nav[1].button(f"Continue: {WORKFLOW[stage_idx + 1]['label']} →",
+                         use_container_width=True, type="primary"):
+            _goto_stage(stage_idx + 1)
+    else:
+        nav[1].caption("End of workflow — revisit any stage from the sidebar outline.")
 
 
 if __name__ == "__main__":
