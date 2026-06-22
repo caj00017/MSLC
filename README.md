@@ -64,27 +64,6 @@ The model and test suite are **pure standard library** — they run on a bare
 interpreter. Only the Streamlit UI and the one-click Excel export need the
 packages in `requirements.txt` (CSV/JSON export work without them).
 
-### Guided workflow — "analysis on rails"
-
-The UI is organised as a four-stage workflow you step through end to end. The
-left sidebar shows the **navigable outline**; the main area shows the steps of
-the current stage as tabs, and **Back / Continue** buttons walk the rails:
-
-1. **⚙️ Configuration** — Assumptions, Asset catalog, Dependencies, Import/Export.
-   Define the scenario and the data the engine runs on.
-2. **📊 Analysis** — Dashboard, Mission manifest, Readiness checks, Detail tables.
-   The engine output, including the red/yellow/green crew-arrival gates.
-3. **📈 Visualization** — Charts of mass, power, missions, resupply, and ISRU.
-4. **🧭 Interpretation** — a guided **Reading guide** (instructional analysis of
-   the limiting resource, mass drivers, sensitivities, and dependencies),
-   plus Sensitivity sweeps, scenario Compare, and Legacy validation.
-
-The sidebar **Quick configuration** panel and the Configuration → Assumptions
-tab edit the **same scenario**: entries are persistent and stay in sync across
-every step, and a banner at the top keeps the configured scenario and its
-headline outcome in view wherever you are in the workflow. Jump to any stage
-from the sidebar, or follow Continue from input straight through to outcome.
-
 ### How to run the tests
 
 ```bash
